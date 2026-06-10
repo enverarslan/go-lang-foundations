@@ -29,7 +29,7 @@ func (n *NormalTruck) loadCargo(ctx context.Context) error {
 		return err
 	}
 	n.cargo += 1
-	time.Sleep(time.Millisecond * 250)
+	time.Sleep(time.Second)
 	return nil
 }
 func (n *NormalTruck) unloadCargo(ctx context.Context) error {
@@ -37,7 +37,7 @@ func (n *NormalTruck) unloadCargo(ctx context.Context) error {
 		return err
 	}
 	n.cargo = 0
-	time.Sleep(time.Millisecond * 250)
+	time.Sleep(time.Second)
 	return nil
 }
 
@@ -47,7 +47,7 @@ func (e *ElectricTruck) loadCargo(ctx context.Context) error {
 	}
 	e.cargo += 1
 	e.battery -= 1
-	time.Sleep(time.Millisecond * 250)
+	time.Sleep(time.Second)
 	return nil
 }
 
@@ -59,7 +59,7 @@ func (e *ElectricTruck) unloadCargo(ctx context.Context) error {
 	}
 	e.cargo = 0
 	e.battery -= 1
-	time.Sleep(time.Millisecond * 250)
+	time.Sleep(time.Second)
 	return nil
 }
 
@@ -67,12 +67,11 @@ func processTruck(ctx context.Context, truck Truck) error {
 
 	fmt.Printf("started processing truck: %+v\n", truck)
 
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*250)
+	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*500)
 	defer cancel()
 
 	err := truck.loadCargo(ctx)
 	if err != nil {
-
 		return fmt.Errorf("error loading cargo: %w", err)
 	}
 
@@ -88,21 +87,41 @@ func processTruck(ctx context.Context, truck Truck) error {
 
 func processFleet(ctx context.Context, trucks []Truck) error {
 	var wg sync.WaitGroup
+	// add buffered errors channel
+	errorsChan := make(chan error, len(trucks))
 
 	for _, truck := range trucks {
 		wg.Add(1)
 		go func(t Truck) {
 			err := processTruck(ctx, t)
-
 			if err != nil {
-				log.Println(err)
+				// send err to channel
+				errorsChan <- err
 			}
-
 			wg.Done()
 		}(truck)
 	}
 
+	// wait all done
 	wg.Wait()
+
+	/*
+	 * we could not use `defer close(errorsChan)`,
+	 * reading from channel with `range`, we must intentionally close to prevent deadlock.
+	 */
+	// close the channel
+	close(errorsChan)
+
+	var errs []error
+
+	for err := range errorsChan {
+		log.Printf("error processing truck: %+v\n", err)
+		errs = append(errs, err)
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("fleet processing had %d errors", len(errs))
+	}
 
 	return nil
 }
