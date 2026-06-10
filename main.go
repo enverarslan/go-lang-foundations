@@ -107,7 +107,7 @@ func processFleet(ctx context.Context, trucks []Truck) error {
 
 	/*
 	 * we could not use `defer close(errorsChan)`,
-	 * reading from channel with `range`, we must intentionally close to prevent deadlock.
+	 * reading from channel with `range`, we must explicitly close the channel to prevent deadlock.
 	 */
 	// close the channel
 	close(errorsChan)
